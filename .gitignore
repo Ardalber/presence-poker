@@ -1,0 +1,46 @@
+# Système d’exploitation
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Fichiers d’environnement
+.env
+.env.local
+.env.*.local
+
+# Node modules (si jamais tu utilises Node/npm)
+node_modules/
+
+# Dossiers de build / distribution
+dist/
+build/
+
+# Cache de bundlers / transpileurs
+.cache/
+.cache-loader/
+.parcel-cache/
+
+# Coverage (tests)
+coverage/
+
+# IDE et éditeurs
+.vscode/
+.idea/
+*.sublime-workspace
+*.sublime-project
+
+# MacOS
+*.swp
+*~
+
+# Fichiers temporaires
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Autres
+*.tmp
+*.temp

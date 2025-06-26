@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Poker Tracker – Joueurs</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div class="container">
+    <h1>Suivi des joueurs</h1>
+
+    <form id="player-form">
+      <input type="text" id="player-name" placeholder="Entrez un nom" required>
+      <button type="submit" class="btn-main">Ajouter</button>
+    </form>
+
+    <ul id="player-list">
+      <!-- Les joueurs seront affichés ici -->
+    </ul>
+
+    <div id="summary">
+      <span id="present-count">0</span> joueur(s) présent(s)
+    </div>
+
+    <div class="reset-wrapper">
+      <button id="reset-btn" class="btn-main">Tout mettre absent</button>
+      <div id="reset-confirm" class="confirm-inline hidden">
+        <span>Confirmer ?</span>
+        <button id="confirm-yes" class="btn-main small">Oui</button>
+        <button id="confirm-no" class="btn-cancel small">Non</button>
+      </div>
+    </div>
+  </div>
+  <script src="script.js"></script>
+</body>
+</html>
