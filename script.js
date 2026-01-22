@@ -72,9 +72,6 @@ function renderList() {
 
     toggleWrapper.append(range);
 
-    const controls = document.createElement('div');
-    controls.className = 'player-controls';
-
     const renameBtn = document.createElement('button');
     renameBtn.textContent = '✏️'; renameBtn.title = 'Renommer';
     renameBtn.addEventListener('click', () => {
@@ -95,8 +92,10 @@ function renderList() {
       updateSummary(players);
     });
 
-    controls.append(renameBtn, deleteBtn);
-    li.append(nameSpan, toggleWrapper, controls);
+    const bottomRow = document.createElement('div');
+    bottomRow.className = 'player-bottom-row';
+    bottomRow.append(renameBtn, toggleWrapper, deleteBtn);
+    li.append(nameSpan, bottomRow);
     ul.append(li);
   });
 

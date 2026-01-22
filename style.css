@@ -75,19 +75,34 @@ form input {
   padding: 0.5rem; border-radius: 4px;
   width: 200px;
   display: grid;
-  grid-template-columns: 1fr 72px auto;
-  align-items: center;
+  grid-template-columns: 1fr;
+  grid-template-rows: auto auto;
   gap: 0.5rem;
 }
 
-.player-name { text-align: left; }
+.player-name {
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 500;
+}
 .player-name.present { color: var(--success-color); }
 .player-name.absent { color: var(--danger-color); }
+
+.player-bottom-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 0.5rem;
+  align-items: center;
+}
 
 /* Curseur à 3 positions */
 .tri-toggle {
   width: 72px;
   position: relative;
+  justify-self: center;
+  align-self: center;
 }
 .tri-toggle .tri-range {
   width: 100%;
