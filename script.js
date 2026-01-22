@@ -45,6 +45,8 @@ function renderList() {
   players.forEach((p, i) => {
     const li = document.createElement('li');
     li.className = 'player-item';
+    li.draggable = true;
+    li.dataset.index = i;
 
     const nameSpan = document.createElement('span');
     nameSpan.textContent = p.name;
@@ -100,6 +102,7 @@ function renderList() {
   });
 
   updateSummary(loadPlayers());
+  setupDragAndDrop();
 }
 
 document.getElementById('player-form').addEventListener('submit', e => {
@@ -130,5 +133,51 @@ yesBtn.addEventListener('click', () => {
 noBtn.addEventListener('click', () => {
   confirmBox.classList.add('hidden');
 });
+
+let draggedItem = null;
+
+function setupDragAndDrop() {
+  const playerItems = document.querySelectorAll('.player-item');
+  
+  playerItems.forEach(item => {
+    item.addEventListener('dragstart', (e) => {
+      draggedItem = item;
+      item.style.opacity = '0.5';
+      e.dataTransfer.effectAllowed = 'move';
+    });
+    
+    item.addEventListener('dragend', () => {
+      item.style.opacity = '1';
+      draggedItem = null;
+    });
+    
+    item.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      if (item !== draggedItem) {
+        item.style.opacity = '0.7';
+      }
+    });
+    
+    item.addEventListener('dragleave', () => {
+      if (item !== draggedItem) {
+        item.style.opacity = '1';
+      }
+    });
+    
+    item.addEventListener('drop', (e) => {
+      e.preventDefault();
+      if (draggedItem !== item) {
+        const players = loadPlayers();
+        const draggedIndex = parseInt(draggedItem.dataset.index);
+        const targetIndex = parseInt(item.dataset.index);
+        
+        [players[draggedIndex], players[targetIndex]] = [players[targetIndex], players[draggedIndex]];
+        savePlayers(players);
+        renderList();
+      }
+    });
+  });
+}
 
 document.addEventListener('DOMContentLoaded', renderList);

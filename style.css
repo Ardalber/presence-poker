@@ -78,6 +78,12 @@ form input {
   grid-template-columns: 1fr;
   grid-template-rows: auto auto;
   gap: 0.5rem;
+  cursor: grab;
+  transition: opacity 0.2s ease;
+}
+
+.player-item:active {
+  cursor: grabbing;
 }
 
 .player-name {
