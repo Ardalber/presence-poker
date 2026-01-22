@@ -1,15 +1,41 @@
 const STORAGE_KEY = 'pokerPlayers';
 
+function clampPresence(value) {
+  const num = Number(value);
+  if (Number.isNaN(num)) return 0;
+  if (num > 1) return 1;
+  if (num < -1) return -1;
+  return num;
+}
+function normalizePlayer(raw) {
+  // Convert legacy boolean "present" to numeric presence, defaulting to absent
+  const presence =
+    typeof raw.presence === 'number'
+      ? clampPresence(raw.presence)
+      : typeof raw.present === 'boolean'
+        ? (raw.present ? 1 : -1)
+        : -1;
+  return { name: raw.name, presence };
+}
 function loadPlayers() {
   const data = localStorage.getItem(STORAGE_KEY);
-  return data ? JSON.parse(data) : [];
+  const parsed = data ? JSON.parse(data) : [];
+  return parsed.map(normalizePlayer);
 }
 function savePlayers(players) {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
 }
 function updateSummary(players) {
-  const count = players.filter(p => p.present).length;
+  const count = players.filter(p => p.presence === 1).length;
   document.getElementById('present-count').textContent = count;
+}
+function presenceState(value) {
+  if (value >= 1) return 'present';
+  if (value <= -1) return 'absent';
+  return 'unknown';
+}
+function applyNameState(el, value) {
+  el.className = `player-name ${presenceState(value)}`;
 }
 function renderList() {
   const ul = document.getElementById('player-list');
@@ -22,21 +48,29 @@ function renderList() {
 
     const nameSpan = document.createElement('span');
     nameSpan.textContent = p.name;
-    nameSpan.className = 'player-name';
+    applyNameState(nameSpan, p.presence);
 
-    const label = document.createElement('label');
-    label.className = 'switch';
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.checked = p.present;
-    cb.addEventListener('change', () => {
-      players[i].present = cb.checked;
+    const toggleWrapper = document.createElement('div');
+    toggleWrapper.className = 'tri-toggle';
+    toggleWrapper.dataset.state = presenceState(p.presence);
+
+    const range = document.createElement('input');
+    range.type = 'range';
+    range.min = '-1';
+    range.max = '1';
+    range.step = '1';
+    range.value = p.presence;
+    range.className = 'tri-range';
+    range.addEventListener('input', () => {
+      const value = clampPresence(range.value);
+      players[i].presence = value;
+      toggleWrapper.dataset.state = presenceState(value);
+      applyNameState(nameSpan, value);
       savePlayers(players);
       updateSummary(players);
     });
-    const slider = document.createElement('span');
-    slider.className = 'slider';
-    label.append(cb, slider);
+
+    toggleWrapper.append(range);
 
     const controls = document.createElement('div');
     controls.className = 'player-controls';
@@ -62,7 +96,7 @@ function renderList() {
     });
 
     controls.append(renameBtn, deleteBtn);
-    li.append(nameSpan, label, controls);
+    li.append(nameSpan, toggleWrapper, controls);
     ul.append(li);
   });
 
@@ -74,7 +108,7 @@ document.getElementById('player-form').addEventListener('submit', e => {
   const name = document.getElementById('player-name').value.trim();
   if (!name) return;
   const players = loadPlayers();
-  players.push({ name, present: false });
+  players.push({ name, presence: 0 });
   savePlayers(players);
   document.getElementById('player-name').value = '';
   renderList();
@@ -89,7 +123,7 @@ resetBtn.addEventListener('click', () => {
   confirmBox.classList.remove('hidden');
 });
 yesBtn.addEventListener('click', () => {
-  const players = loadPlayers().map(p => ({ ...p, present: false }));
+  const players = loadPlayers().map(p => ({ ...p, presence: 0 }));
   savePlayers(players);
   renderList();
   confirmBox.classList.add('hidden');
