@@ -47,32 +47,43 @@ function renderList() {
     li.className = 'player-item';
     li.draggable = true;
     li.dataset.index = i;
+    li.dataset.playerState = presenceState(p.presence);
 
     const nameSpan = document.createElement('span');
     nameSpan.textContent = p.name;
     applyNameState(nameSpan, p.presence);
 
     const toggleWrapper = document.createElement('div');
-    toggleWrapper.className = 'tri-toggle';
+    toggleWrapper.className = 'toggle-buttons';
     toggleWrapper.dataset.state = presenceState(p.presence);
 
-    const range = document.createElement('input');
-    range.type = 'range';
-    range.min = '-1';
-    range.max = '1';
-    range.step = '1';
-    range.value = p.presence;
-    range.className = 'tri-range';
-    range.addEventListener('input', () => {
-      const value = clampPresence(range.value);
-      players[i].presence = value;
-      toggleWrapper.dataset.state = presenceState(value);
-      applyNameState(nameSpan, value);
+    const absentBtn = document.createElement('button');
+    absentBtn.className = 'btn-toggle btn-absent';
+    absentBtn.textContent = '❌';
+    absentBtn.title = 'Absent';
+    absentBtn.addEventListener('click', () => {
+      players[i].presence = -1;
+      toggleWrapper.dataset.state = presenceState(-1);
+      li.dataset.playerState = presenceState(-1);
+      applyNameState(nameSpan, -1);
       savePlayers(players);
       updateSummary(players);
     });
 
-    toggleWrapper.append(range);
+    const presentBtn = document.createElement('button');
+    presentBtn.className = 'btn-toggle btn-present';
+    presentBtn.textContent = '✓';
+    presentBtn.title = 'Présent';
+    presentBtn.addEventListener('click', () => {
+      players[i].presence = 1;
+      toggleWrapper.dataset.state = presenceState(1);
+      li.dataset.playerState = presenceState(1);
+      applyNameState(nameSpan, 1);
+      savePlayers(players);
+      updateSummary(players);
+    });
+
+    toggleWrapper.append(absentBtn, presentBtn);
 
     const renameBtn = document.createElement('button');
     renameBtn.textContent = '✏️'; renameBtn.title = 'Renommer';

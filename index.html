@@ -13,22 +13,23 @@
       <button type="submit" class="btn-main">Ajouter</button>
     </form>
 
+    <div id="summary-reset-wrapper">
+      <div id="summary">
+        <span id="present-count">0</span> joueur(s) présent(s)
+      </div>
+      <div class="reset-wrapper">
+        <button id="reset-btn" class="btn-main">Reset</button>
+        <div id="reset-confirm" class="confirm-inline hidden">
+          <span>Confirmer ?</span>
+          <button id="confirm-yes" class="btn-main small">Oui</button>
+          <button id="confirm-no" class="btn-cancel small">Non</button>
+        </div>
+      </div>
+    </div>
+
     <ul id="player-list">
       <!-- Les joueurs seront affichés ici -->
     </ul>
-
-    <div id="summary">
-      <span id="present-count">0</span> joueur(s) présent(s)
-    </div>
-
-    <div class="reset-wrapper">
-      <button id="reset-btn" class="btn-main">Reset</button>
-      <div id="reset-confirm" class="confirm-inline hidden">
-        <span>Confirmer ?</span>
-        <button id="confirm-yes" class="btn-main small">Oui</button>
-        <button id="confirm-no" class="btn-cancel small">Non</button>
-      </div>
-    </div>
   </div>
   <script src="script.js"></script>
 </body>
