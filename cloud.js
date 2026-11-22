@@ -16,7 +16,7 @@ const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 /**
  * handlers : {
  *   onPlayers(obj), onSeating(data|null), onConnection(bool), onError(err),
- *   onAuth({ user, isAdmin }), onBanned(bool), onUsers(obj), onBannedList(obj)
+ *   onAuth({ user, isAdmin }), onUsers(obj)
  * }
  */
 export async function initCloud(handlers) {
@@ -50,7 +50,6 @@ export async function initCloud(handlers) {
   onAuthStateChanged(auth, async user => {
     stopUserListeners();
     if (!user) {
-      handlers.onBanned(false);
       return handlers.onAuth({ user: null, isAdmin: false });
     }
 
@@ -61,8 +60,6 @@ export async function initCloud(handlers) {
       lastSeen: Date.now(),
     }).catch(() => {});
 
-    unsubs.push(onValue(ref(db, `banned/${user.uid}`), s => handlers.onBanned(s.val() === true), () => {}));
-
     let isAdmin = false;
     try {
       isAdmin = (await get(ref(db, `admins/${user.uid}`))).val() === true;
@@ -71,7 +68,6 @@ export async function initCloud(handlers) {
     }
     if (isAdmin) {
       unsubs.push(onValue(ref(db, 'users'), s => handlers.onUsers(s.val() || {}), () => {}));
-      unsubs.push(onValue(ref(db, 'banned'), s => handlers.onBannedList(s.val() || {}), () => {}));
     }
     handlers.onAuth({ user, isAdmin });
   });
@@ -94,8 +90,8 @@ export async function initCloud(handlers) {
     // updates : { idJoueur: {...} | null }
     updatePlayers: updates => update(ref(db, 'players'), updates),
     setPlayer: (id, data) => set(ref(db, `players/${id}`), data),
-    ban: uid => update(ref(db), { [`banned/${uid}`]: true, [`players/${uid}`]: null }),
-    unban: uid => set(ref(db, `banned/${uid}`), null),
+    // Retire le compte : sa ligne dans la liste et sa fiche. Il pourra se reconnecter plus tard.
+    removeAccount: uid => update(ref(db), { [`players/${uid}`]: null, [`users/${uid}`]: null }),
     setSeating: data => set(ref(db, 'seating'), data),
   };
 }

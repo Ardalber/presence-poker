@@ -70,10 +70,8 @@ let filter = 'all';
 let cloud = null;
 let currentUser = null;
 let isAdmin = false;
-let isBanned = false;
 let cloudLoaded = false;
 let usersData = {};
-let bannedList = {};
 
 const canEdit = () => isAdmin && cloud !== null;
 const myId = () => (currentUser ? currentUser.uid : null);
@@ -463,13 +461,11 @@ const meCard = document.getElementById('me-card');
 function renderMe() {
   const views = {
     guest: document.getElementById('me-guest'),
-    banned: document.getElementById('me-banned'),
     join: document.getElementById('me-join'),
     joined: document.getElementById('me-joined'),
   };
   let view = 'guest';
-  if (currentUser && isBanned) view = 'banned';
-  else if (currentUser && myEntry()) view = 'joined';
+  if (currentUser && myEntry()) view = 'joined';
   else if (currentUser) view = 'join';
 
   // L'admin gère la liste directement : la carte ne lui sert que s'il est inscrit
@@ -502,7 +498,7 @@ async function writeMe(changes) {
     return true;
   } catch (err) {
     console.error(err);
-    showToast(isBanned ? 'Ton compte a été bloqué par l’admin' : 'Enregistrement refusé par le serveur (' + (err.code || err.message) + ')');
+    showToast('Enregistrement refusé par le serveur (' + (err.code || err.message) + ')');
     return false;
   }
 }
@@ -578,10 +574,9 @@ function renderAdminPanel() {
   document.getElementById('users-count').textContent = users.length;
 
   users.forEach(u => {
-    const banned = bannedList[u.uid] === true;
     const entry = players.find(p => p.id === u.uid);
     const li = document.createElement('li');
-    li.className = 'user-item' + (banned ? ' is-banned' : '');
+    li.className = 'user-item';
 
     const photo = document.createElement(u.photo ? 'img' : 'span');
     photo.className = 'user-photo';
@@ -602,7 +597,7 @@ function renderAdminPanel() {
     meta.className = 'user-meta';
     meta.textContent = [
       u.lastSeen ? `vu ${timeAgo(u.lastSeen)}` : '',
-      banned ? 'banni' : entry ? `inscrit : ${entry.name}` : 'pas inscrit',
+      entry ? `inscrit : ${entry.name}` : 'pas inscrit',
     ].filter(Boolean).join(' · ');
     info.append(name, meta);
 
@@ -610,13 +605,14 @@ function renderAdminPanel() {
 
     if (u.uid !== myId()) {
       const btn = document.createElement('button');
-      btn.className = banned ? 'btn btn-ghost small' : 'btn btn-danger-ghost small';
-      btn.textContent = banned ? 'Débannir' : 'Bannir';
+      btn.className = 'btn btn-danger-ghost small';
+      btn.textContent = 'Retirer';
+      btn.title = 'Retire ce compte et sa ligne de la liste. Il pourra se reconnecter plus tard.';
       btn.addEventListener('click', async () => {
-        if (!banned && !confirm(`Bannir ${u.name} ? Il sera retiré de la liste et ne pourra plus s’inscrire.`)) return;
+        if (!confirm(`Retirer ${u.name} ? Son nom est enlevé de la liste. Il pourra se reconnecter et se réinscrire plus tard.`)) return;
         try {
-          await (banned ? cloud.unban(u.uid) : cloud.ban(u.uid));
-          showToast(banned ? `${u.name} peut de nouveau s’inscrire` : `${u.name} est banni`);
+          await cloud.removeAccount(u.uid);
+          showToast(`${u.name} a été retiré`);
         } catch (err) {
           console.error(err);
           showToast('Action refusée par le serveur');
@@ -892,21 +888,13 @@ async function startCloud() {
         const wasAdmin = isAdmin;
         currentUser = user;
         isAdmin = admin;
-        if (!admin) { usersData = {}; bannedList = {}; }
+        if (!admin) usersData = {};
         applyMode();
         if (admin && !wasAdmin) showToast('Mode admin : tes modifications sont visibles en direct');
         offerImport();
       },
-      onBanned(banned) {
-        isBanned = banned;
-        renderMe();
-      },
       onUsers(obj) {
         usersData = obj;
-        renderAdminPanel();
-      },
-      onBannedList(obj) {
-        bannedList = obj;
         renderAdminPanel();
       },
     });

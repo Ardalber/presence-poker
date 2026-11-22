@@ -728,7 +728,6 @@ body.is-admin #admin-btn { border-color: var(--gold); color: var(--gold); }
   border: 1px solid var(--tile-border);
   border-radius: 12px;
 }
-.user-item.is-banned { opacity: 0.6; border-color: rgba(250, 82, 82, 0.5); }
 .user-photo {
   width: 38px;
   height: 38px;
