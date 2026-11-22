@@ -3,34 +3,85 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Poker Tracker – Joueurs</title>
+  <meta name="theme-color" content="#0b3d2b">
+  <title>Présence Poker</title>
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <div class="container">
-    <form id="player-form">
-      <input type="text" id="player-name" placeholder="Entrez un nom" required>
-      <button type="submit" class="btn-main">Ajouter</button>
-    </form>
+  <main class="container">
+    <header class="app-header">
+      <div class="suits" aria-hidden="true"><span>♠</span><span class="red">♥</span><span class="red">♦</span><span>♣</span></div>
+      <h1>Présence Poker</h1>
+      <p class="subtitle">Qui est à la table ce soir&nbsp;?</p>
+    </header>
 
-    <div id="summary-reset-wrapper">
-      <div id="summary">
-        <span id="present-count">0</span> joueur(s) présent(s)
+    <section class="stats" aria-label="Résumé">
+      <div class="chip chip-present" title="Présents">
+        <span class="chip-value" id="present-count">0</span>
+        <span class="chip-label">présents</span>
       </div>
-      <div class="reset-wrapper">
-        <button id="reset-btn" class="btn-main">Reset</button>
-        <div id="reset-confirm" class="confirm-inline hidden">
-          <span>Confirmer ?</span>
-          <button id="confirm-yes" class="btn-main small">Oui</button>
-          <button id="confirm-no" class="btn-cancel small">Non</button>
+      <div class="chip chip-unknown" title="En attente de réponse">
+        <span class="chip-value" id="unknown-count">0</span>
+        <span class="chip-label">attente</span>
+      </div>
+      <div class="chip chip-absent" title="Absents">
+        <span class="chip-value" id="absent-count">0</span>
+        <span class="chip-label">absents</span>
+      </div>
+    </section>
+    <p id="tables-hint" class="tables-hint"></p>
+
+    <form id="player-form" autocomplete="off">
+      <input type="text" id="player-name" placeholder="Nom du joueur" maxlength="30" required>
+      <button type="submit" class="btn btn-main">Ajouter</button>
+    </form>
+    <p id="form-error" class="form-error" aria-live="polite"></p>
+
+    <div class="toolbar">
+      <div class="filters" role="tablist" aria-label="Filtrer les joueurs">
+        <button class="filter active" data-filter="all" role="tab">Tous</button>
+        <button class="filter" data-filter="present" role="tab">Présents</button>
+        <button class="filter" data-filter="unknown" role="tab">En attente</button>
+        <button class="filter" data-filter="absent" role="tab">Absents</button>
+      </div>
+      <div class="actions">
+        <button id="sort-btn" class="btn btn-ghost" title="Trier : présents d'abord, puis par nom">⇅ Trier</button>
+        <button id="copy-btn" class="btn btn-ghost" title="Copier la liste des présents">⧉ Copier</button>
+        <button id="seat-btn" class="btn btn-main" title="Tirer les places au sort">🎲 Placer</button>
+        <div class="reset-wrapper">
+          <button id="reset-btn" class="btn btn-danger-ghost">↺ Reset</button>
+          <div id="reset-confirm" class="confirm-pop hidden" role="dialog" aria-label="Confirmer le reset">
+            <span>Tout remettre en attente&nbsp;?</span>
+            <button id="confirm-yes" class="btn btn-main small">Oui</button>
+            <button id="confirm-no" class="btn btn-ghost small">Non</button>
+          </div>
         </div>
       </div>
     </div>
 
-    <ul id="player-list">
-      <!-- Les joueurs seront affichés ici -->
-    </ul>
+    <ul id="player-list" class="player-list"></ul>
+    <p id="empty-state" class="empty-state hidden"></p>
+
+    <p class="help">Astuce&nbsp;: clique sur un joueur pour changer son statut, ✏️ pour le renommer, glisse-le pour le déplacer.</p>
+
+    <section id="seating" class="seating hidden" aria-label="Plan de table">
+      <div class="seating-header">
+        <h2>Plan de table</h2>
+        <div>
+          <button id="reseat-btn" class="btn btn-ghost small">🎲 Retirer</button>
+          <button id="close-seating-btn" class="btn btn-ghost small" aria-label="Fermer le plan de table">✕</button>
+        </div>
+      </div>
+      <p id="seating-stale" class="seating-stale hidden">La liste des présents a changé depuis le tirage.</p>
+      <div id="tables" class="tables"></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast hidden" role="status" aria-live="polite">
+    <span id="toast-text"></span>
+    <button id="toast-action" class="btn btn-ghost small hidden"></button>
   </div>
+
   <script src="script.js"></script>
 </body>
 </html>
