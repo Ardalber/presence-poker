@@ -106,7 +106,7 @@ function save() {
   if (Object.keys(updates).length === 0) return;
   cloud.updatePlayers(updates).catch(err => {
     console.error(err);
-    showToast('Modification refusée par le serveur');
+    showToast('Modification refusée par le serveur (' + (err.code || err.message) + ')');
   });
 }
 
@@ -502,7 +502,7 @@ async function writeMe(changes) {
     return true;
   } catch (err) {
     console.error(err);
-    showToast(isBanned ? 'Ton compte a été bloqué par l’admin' : 'Enregistrement refusé par le serveur');
+    showToast(isBanned ? 'Ton compte a été bloqué par l’admin' : 'Enregistrement refusé par le serveur (' + (err.code || err.message) + ')');
     return false;
   }
 }
@@ -818,8 +818,15 @@ function setStatus(online) {
   statusEl.textContent = online ? 'En direct' : 'Hors ligne';
 }
 
+// Navigateurs intégrés aux applis (Messenger, Instagram, Discord, Snapchat…) : Google y bloque la connexion
+const IN_APP_BROWSER = /FBAN|FBAV|FB_IAB|Instagram|Snapchat|TikTok|Line\/|Discord|; wv\)/i.test(navigator.userAgent);
+
 async function signIn() {
   if (!cloud) return;
+  if (IN_APP_BROWSER) {
+    showToast('Google bloque la connexion ici : ouvre le lien dans Chrome ou Safari (menu ⋮ → « Ouvrir dans le navigateur »)');
+    return;
+  }
   try {
     await cloud.signIn();
   } catch (err) {
@@ -827,6 +834,9 @@ async function signIn() {
     const messages = {
       'auth/unauthorized-domain': 'Connexion bloquée : ajoute ce site dans les domaines autorisés de Firebase',
       'auth/network-request-failed': 'Connexion impossible : pas de réseau',
+      'auth/web-storage-unsupported': 'Connexion impossible dans ce navigateur : ouvre le lien dans Chrome ou Safari',
+      'auth/operation-not-supported-in-this-environment': 'Connexion impossible ici : ouvre le lien dans Chrome ou Safari',
+      'auth/internal-error': 'Connexion impossible ici : ouvre le lien dans Chrome ou Safari',
     };
     showToast(messages[err.code] || 'Connexion impossible : ' + (err.code || err.message));
   }
