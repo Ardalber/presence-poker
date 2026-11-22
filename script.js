@@ -597,7 +597,11 @@ adminBtn.addEventListener('click', async () => {
     else await cloud.signIn();
   } catch (err) {
     console.error(err);
-    showToast('Connexion impossible : ' + (err.code || err.message));
+    const messages = {
+      'auth/unauthorized-domain': 'Connexion bloquée : ajoute ce site dans les domaines autorisés de Firebase',
+      'auth/network-request-failed': 'Connexion impossible : pas de réseau',
+    };
+    showToast(messages[err.code] || 'Connexion impossible : ' + (err.code || err.message));
   }
 });
 
