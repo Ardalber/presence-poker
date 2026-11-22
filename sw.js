@@ -1,12 +1,13 @@
 // Service worker : permet d'ouvrir l'appli sans connexion.
 // Change VERSION à chaque mise à jour des fichiers pour forcer le rafraîchissement.
-const VERSION = 'v2';
+const VERSION = 'v3';
 const CACHE = `presence-poker-${VERSION}`;
 const FILES = [
   './',
   './index.html',
   './style.css',
   './script.js',
+  './cloud.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',

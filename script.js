@@ -31,11 +31,42 @@ function loadPlayers() {
   }
 }
 
-let players = loadPlayers();
+// Dernière liste reçue du serveur, pour l'afficher tout de suite (et hors connexion)
+const CACHE_KEY = 'pokerSharedCache';
+function loadCache() {
+  try {
+    const data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
+    return data && Array.isArray(data.players) ? data : null;
+  } catch {
+    return null;
+  }
+}
+
+const cache = loadCache();
+const localPlayers = loadPlayers(); // ancienne liste propre à cet appareil (pour l'import admin)
+let players = cache ? cache.players.map(normalizePlayer) : [];
+let seatingData = cache ? cache.seating : null;
 let filter = 'all';
 
+let cloud = null;       // API Firebase une fois chargée
+let isAdmin = false;
+let currentUser = null;
+let cloudLoaded = false; // la liste du serveur a été reçue au moins une fois
+
+const canEdit = () => isAdmin && cloud !== null;
+
+function writeCache() {
+  localStorage.setItem(CACHE_KEY, JSON.stringify({ players, seating: seatingData }));
+}
+
+// Enregistre la liste sur le serveur : tous les appareils la voient en direct
 function save() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(players));
+  if (!canEdit()) return;
+  writeCache();
+  cloud.setPlayers(players).catch(err => {
+    console.error(err);
+    showToast('Modification refusée par le serveur');
+  });
 }
 
 function stateOf(value) {
@@ -80,7 +111,9 @@ function render() {
   const visible = listEl.children.length;
   emptyEl.classList.toggle('hidden', visible > 0);
   emptyEl.textContent = players.length === 0
-    ? 'Aucun joueur pour l’instant. Ajoute le premier !'
+    ? (!cloudLoaded ? 'Chargement de la liste…'
+      : canEdit() ? 'Aucun joueur pour l’instant. Ajoute le premier !'
+      : 'Aucun joueur pour l’instant.')
     : 'Aucun joueur dans cette catégorie.';
 
   updateSummary();
@@ -90,10 +123,10 @@ function render() {
 function buildItem(p, i, state) {
   const li = document.createElement('li');
   li.className = 'player-item';
-  li.draggable = true;
+  li.draggable = canEdit();
   li.dataset.index = i;
   li.dataset.playerState = state;
-  li.title = 'Clique pour changer le statut';
+  if (canEdit()) li.title = 'Clique pour changer le statut';
 
   const avatar = document.createElement('span');
   avatar.className = 'avatar';
@@ -138,15 +171,16 @@ function buildItem(p, i, state) {
   tools.className = 'player-tools';
   tools.append(renameBtn, deleteBtn);
 
-  li.append(avatar, info, tools, toggles);
+  if (canEdit()) li.append(avatar, info, tools, toggles);
+  else li.append(avatar, info);
 
   li.addEventListener('click', e => {
-    if (e.target.closest('button, input')) return;
+    if (!canEdit() || e.target.closest('button, input')) return;
     const next = STATES[(STATES.indexOf(state) + 1) % STATES.length];
     setState(i, next);
   });
 
-  setupDrag(li);
+  if (canEdit()) setupDrag(li);
   return li;
 }
 
@@ -194,12 +228,14 @@ function bump(id, value) {
 /* ---------- Actions ---------- */
 
 function setState(i, state) {
+  if (!canEdit()) return;
   players[i].presence = VALUE_OF[state];
   save();
   render();
 }
 
 function addPlayer(name) {
+  if (!canEdit()) return;
   players.push({ name, presence: 0 });
   save();
   render();
@@ -207,6 +243,7 @@ function addPlayer(name) {
 
 let lastRemoved = null;
 function removePlayer(i) {
+  if (!canEdit()) return;
   const [removed] = players.splice(i, 1);
   lastRemoved = { player: removed, index: i };
   save();
@@ -284,6 +321,7 @@ document.querySelectorAll('.filter').forEach(btn => {
 });
 
 document.getElementById('sort-btn').addEventListener('click', () => {
+  if (!canEdit()) return;
   const order = { present: 0, unknown: 1, absent: 2 };
   players.sort((a, b) =>
     order[stateOf(a.presence)] - order[stateOf(b.presence)] ||
@@ -316,7 +354,8 @@ document.getElementById('reset-btn').addEventListener('click', e => {
   confirmBox.classList.toggle('hidden');
 });
 document.getElementById('confirm-yes').addEventListener('click', () => {
-  players = players.map(p => ({ ...p, presence: 0 }));
+  if (!canEdit()) return;
+  players =players.map(p => ({ ...p, presence: 0 }));
   save();
   render();
   confirmBox.classList.add('hidden');
@@ -353,7 +392,7 @@ function setupDrag(li) {
   li.addEventListener('drop', e => {
     e.preventDefault();
     const target = Number(li.dataset.index);
-    if (dragIndex === null || target === dragIndex) return;
+    if (!canEdit() || dragIndex === null || target === dragIndex) return;
     const [moved] = players.splice(dragIndex, 1);
     players.splice(target, 0, moved);
     save();
@@ -386,7 +425,9 @@ function presentKey() {
   return players.filter(p => stateOf(p.presence) === 'present').map(p => p.name).sort().join('|');
 }
 
+// Tirage fait par l'admin, puis partagé : tout le monde voit le même plan de table
 function drawSeating() {
+  if (!canEdit()) return;
   const present = players.filter(p => stateOf(p.presence) === 'present').map(p => p.name);
   if (present.length < 2) {
     showToast('Il faut au moins 2 présents pour placer les joueurs');
@@ -399,18 +440,38 @@ function drawSeating() {
     tables.push(shuffled.slice(k, k + size));
     k += size;
   });
-
-  const container = document.getElementById('tables');
-  container.innerHTML = '';
-  tables.forEach((seats, t) => container.append(buildTable(seats, t, tables.length)));
-
-  lastSeatedKey = presentKey();
-  seatingEl.classList.remove('hidden');
-  checkSeatingStale();
-  seatingEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  const data = {
+    tables,
+    dealers: tables.map(seats => Math.floor(Math.random() * seats.length)),
+    at: Date.now(),
+  };
+  seatingClosedAt = null;
+  showSeating(data, true);
+  cloud.setSeating(data).catch(() => showToast('Plan de table non partagé'));
 }
 
-function buildTable(seats, t, total) {
+let seatingClosedAt = null; // plan masqué par l'utilisateur sur cet appareil
+
+function showSeating(data, scroll = false) {
+  seatingData = data;
+  const tablesData = data && Array.isArray(data.tables) ? data.tables.map(t => Object.values(t || {})) : [];
+  if (tablesData.length === 0 || seatingClosedAt === data.at) {
+    seatingEl.classList.add('hidden');
+    lastSeatedKey = null;
+    return;
+  }
+  const container = document.getElementById('tables');
+  container.innerHTML = '';
+  const dealers = data.dealers ? Object.values(data.dealers) : [];
+  tablesData.forEach((seats, t) => container.append(buildTable(seats, t, tablesData.length, dealers[t] ?? 0)));
+
+  lastSeatedKey = tablesData.flat().sort().join('|');
+  seatingEl.classList.remove('hidden');
+  checkSeatingStale();
+  if (scroll) seatingEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+function buildTable(seats, t, total, dealer) {
   const wrap = document.createElement('div');
   wrap.className = 'table-wrap';
 
@@ -422,7 +483,6 @@ function buildTable(seats, t, total) {
 
   const felt = document.createElement('div');
   felt.className = 'felt';
-  const dealer = Math.floor(Math.random() * seats.length);
 
   seats.forEach((name, s) => {
     const angle = (-90 + (360 / seats.length) * s) * Math.PI / 180;
@@ -469,6 +529,7 @@ function checkSeatingStale() {
 document.getElementById('seat-btn').addEventListener('click', drawSeating);
 document.getElementById('reseat-btn').addEventListener('click', drawSeating);
 document.getElementById('close-seating-btn').addEventListener('click', () => {
+  seatingClosedAt = seatingData ? seatingData.at : null;
   seatingEl.classList.add('hidden');
   lastSeatedKey = null;
 });
@@ -496,15 +557,115 @@ function showToast(text, actionLabel, onAction) {
   }, actionLabel ? 5000 : 2500);
 }
 
-/* Synchronise si la liste change dans un autre onglet */
-window.addEventListener('storage', e => {
-  if (e.key === STORAGE_KEY) {
-    players = loadPlayers();
-    render();
+/* ---------- Liste partagée en direct (Firebase) ---------- */
+
+const adminBtn = document.getElementById('admin-btn');
+const statusEl = document.getElementById('live-status');
+const uidBox = document.getElementById('uid-box');
+
+function applyMode() {
+  document.body.classList.toggle('is-admin', canEdit());
+  document.body.classList.toggle('readonly', !canEdit());
+  if (!cloud) {
+    adminBtn.textContent = '🔒 Admin';
+    adminBtn.disabled = true;
+  } else if (canEdit()) {
+    adminBtn.textContent = '👑 Admin · Déconnexion';
+    adminBtn.disabled = false;
+  } else if (currentUser) {
+    adminBtn.textContent = 'Déconnexion';
+    adminBtn.disabled = false;
+  } else {
+    adminBtn.textContent = '🔒 Admin';
+    adminBtn.disabled = false;
+  }
+  uidBox.classList.toggle('hidden', !(currentUser && !isAdmin));
+  if (currentUser && !isAdmin) document.getElementById('uid-value').textContent = currentUser.uid;
+  render();
+  showSeating(seatingData);
+}
+
+function setStatus(online) {
+  statusEl.dataset.online = String(online);
+  statusEl.textContent = online ? 'En direct' : 'Hors ligne';
+}
+
+adminBtn.addEventListener('click', async () => {
+  if (!cloud) return;
+  try {
+    if (currentUser) await cloud.signOut();
+    else await cloud.signIn();
+  } catch (err) {
+    console.error(err);
+    showToast('Connexion impossible : ' + (err.code || err.message));
   }
 });
 
-render();
+document.getElementById('uid-copy').addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(currentUser.uid);
+    showToast('Identifiant copié');
+  } catch {
+    showToast(currentUser.uid);
+  }
+});
+
+let importOffered = false;
+function offerImport() {
+  // Première connexion admin : si le serveur est vide, on reprend la liste de cet appareil
+  if (importOffered || !canEdit() || !cloudLoaded || players.length > 0 || localPlayers.length === 0) return;
+  importOffered = true;
+  players = localPlayers.map(p => ({ ...p }));
+  save();
+  render();
+  showToast(`${players.length} joueurs repris de cet appareil et partagés`);
+}
+
+async function startCloud() {
+  try {
+    const { initCloud } = await import('./cloud.js');
+    cloud = await initCloud({
+      onPlayers(list) {
+        players = list.map(normalizePlayer).filter(p => p.name);
+        cloudLoaded = true;
+        writeCache();
+        render();
+        offerImport();
+      },
+      onSeating(data) {
+        showSeating(data);
+        writeCache();
+      },
+      onConnection: setStatus,
+      onError(err) {
+        console.error(err);
+        cloudLoaded = true;
+        render();
+        showToast('Lecture de la liste refusée : règles Firebase à publier');
+      },
+      onAuth({ user, isAdmin: admin }) {
+        const wasAdmin = isAdmin;
+        currentUser = user;
+        isAdmin = admin;
+        applyMode();
+        if (admin && !wasAdmin) showToast('Mode admin : tes modifications sont visibles en direct');
+        if (user && !admin) showToast('Ce compte n’est pas administrateur');
+        offerImport();
+      },
+    });
+    applyMode();
+  } catch (err) {
+    console.error(err);
+    cloudLoaded = true;
+    setStatus(false);
+    applyMode();
+    showToast('Hors ligne : affichage de la dernière liste connue');
+  }
+}
+
+setStatus(false);
+applyMode();
+startCloud();
 
 /* Appli installable : fonctionne aussi hors connexion */
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {

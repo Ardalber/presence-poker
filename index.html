@@ -16,6 +16,16 @@
 </head>
 <body>
   <main class="container">
+    <div class="topbar">
+      <span id="live-status" class="live-status" data-online="false">Hors ligne</span>
+      <button id="admin-btn" class="btn btn-ghost small" disabled>🔒 Admin</button>
+    </div>
+    <div id="uid-box" class="uid-box hidden">
+      <p>Ce compte n'est pas encore administrateur. Pour le devenir, ajoute cet identifiant dans Firebase&nbsp;:</p>
+      <code id="uid-value"></code>
+      <button id="uid-copy" class="btn btn-ghost small">Copier</button>
+    </div>
+
     <header class="app-header">
       <div class="suits" aria-hidden="true"><span>♠</span><span class="red">♥</span><span class="red">♦</span><span>♣</span></div>
       <h1>Présence Poker</h1>
@@ -38,11 +48,11 @@
     </section>
     <p id="tables-hint" class="tables-hint"></p>
 
-    <form id="player-form" autocomplete="off">
+    <form id="player-form" class="admin-only" autocomplete="off">
       <input type="text" id="player-name" placeholder="Nom du joueur" maxlength="30" required>
       <button type="submit" class="btn btn-main">Ajouter</button>
     </form>
-    <p id="form-error" class="form-error" aria-live="polite"></p>
+    <p id="form-error" class="form-error admin-only" aria-live="polite"></p>
 
     <div class="toolbar">
       <div class="filters" role="tablist" aria-label="Filtrer les joueurs">
@@ -52,10 +62,10 @@
         <button class="filter" data-filter="absent" role="tab">Absents</button>
       </div>
       <div class="actions">
-        <button id="sort-btn" class="btn btn-ghost" title="Trier : présents d'abord, puis par nom">⇅ Trier</button>
+        <button id="sort-btn" class="btn btn-ghost admin-only" title="Trier : présents d'abord, puis par nom">⇅ Trier</button>
         <button id="copy-btn" class="btn btn-ghost" title="Copier la liste des présents">⧉ Copier</button>
-        <button id="seat-btn" class="btn btn-main" title="Tirer les places au sort">🎲 Placer</button>
-        <div class="reset-wrapper">
+        <button id="seat-btn" class="btn btn-main admin-only" title="Tirer les places au sort">🎲 Placer</button>
+        <div class="reset-wrapper admin-only">
           <button id="reset-btn" class="btn btn-danger-ghost">↺ Reset</button>
           <div id="reset-confirm" class="confirm-pop hidden" role="dialog" aria-label="Confirmer le reset">
             <span>Tout remettre en attente&nbsp;?</span>
@@ -69,14 +79,14 @@
     <ul id="player-list" class="player-list"></ul>
     <p id="empty-state" class="empty-state hidden"></p>
 
-    <p class="help">Astuce&nbsp;: clique sur un joueur pour changer son statut, ✏️ pour le renommer, glisse-le pour le déplacer.</p>
+    <p class="help admin-only">Astuce&nbsp;: clique sur un joueur pour changer son statut, ✏️ pour le renommer, glisse-le pour le déplacer.</p>
     <p class="help"><button id="open-install" class="link-btn">📲 Installer l'appli / partager le lien</button></p>
 
     <section id="seating" class="seating hidden" aria-label="Plan de table">
       <div class="seating-header">
         <h2>Plan de table</h2>
         <div>
-          <button id="reseat-btn" class="btn btn-ghost small">🎲 Retirer</button>
+          <button id="reseat-btn" class="btn btn-ghost small admin-only">🎲 Retirer</button>
           <button id="close-seating-btn" class="btn btn-ghost small" aria-label="Fermer le plan de table">✕</button>
         </div>
       </div>
