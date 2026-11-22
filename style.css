@@ -536,3 +536,63 @@ button:focus-visible, .player-item:focus-visible {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* ---------- Choix installer / navigateur ---------- */
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--gold);
+  font: inherit;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(3px);
+  animation: fade 0.2s ease;
+}
+.sheet {
+  width: min(100%, 440px);
+  margin: 0 0.5rem;
+  padding: 1.5rem 1.25rem calc(1.25rem + env(safe-area-inset-bottom));
+  background: #121a16;
+  border: 1px solid rgba(233, 196, 106, 0.35);
+  border-bottom: none;
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.6);
+  text-align: center;
+  animation: slide-up 0.3s ease;
+}
+@media (min-width: 600px) {
+  .sheet-backdrop { align-items: center; }
+  .sheet { border-radius: 20px; border-bottom: 1px solid rgba(233, 196, 106, 0.35); }
+}
+.sheet-icon { border-radius: 18px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.5); }
+.sheet h2 { color: var(--gold); font-size: 1.25rem; margin-top: 0.75rem; }
+.sheet-text { color: var(--muted); margin: 0.25rem 0 1rem; }
+.sheet-btn { display: block; width: 100%; padding: 0.85rem 1rem; font-size: 1rem; margin-top: 0.6rem; }
+.sheet-note { color: var(--muted); font-size: 0.78rem; margin-top: 1rem; line-height: 1.4; }
+
+.install-steps {
+  text-align: left;
+  margin-top: 0.6rem;
+  padding: 0.8rem 1rem;
+  background: rgba(233, 196, 106, 0.08);
+  border: 1px solid rgba(233, 196, 106, 0.3);
+  border-radius: 12px;
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.install-steps ol { padding-left: 1.2rem; }
+.install-steps p + ol { margin-top: 0.4rem; }
+
+@keyframes fade { from { opacity: 0; } }
+@keyframes slide-up { from { transform: translateY(40px); opacity: 0; } }

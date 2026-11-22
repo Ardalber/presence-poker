@@ -70,6 +70,7 @@
     <p id="empty-state" class="empty-state hidden"></p>
 
     <p class="help">Astuce&nbsp;: clique sur un joueur pour changer son statut, ✏️ pour le renommer, glisse-le pour le déplacer.</p>
+    <p class="help"><button id="open-install" class="link-btn">📲 Installer l'appli / partager le lien</button></p>
 
     <section id="seating" class="seating hidden" aria-label="Plan de table">
       <div class="seating-header">
@@ -84,7 +85,21 @@
     </section>
   </main>
 
-  <div id="toast" class="toast hidden" role="status" aria-live="polite">
+  <div id="install-sheet" class="sheet-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="install-title">
+    <div class="sheet">
+      <img src="icons/icon-192.png" alt="" class="sheet-icon" width="72" height="72">
+      <h2 id="install-title">Bienvenue sur Présence Poker</h2>
+      <p class="sheet-text">Comment veux-tu l'utiliser&nbsp;?</p>
+
+      <button id="install-btn" class="btn btn-main sheet-btn">📲 Ajouter à l'écran d'accueil</button>
+      <div id="install-steps" class="install-steps hidden"></div>
+      <button id="browser-btn" class="btn btn-ghost sheet-btn">🌐 Continuer dans le navigateur</button>
+      <button id="share-btn" class="btn btn-ghost sheet-btn">🔗 Copier / partager le lien</button>
+      <p class="sheet-note">Pour l'ouvrir dans un autre navigateur, copie le lien et colle-le dedans.<br>Chaque appareil garde sa propre liste de joueurs.</p>
+    </div>
+  </div>
+
+  <div id="toast"class="toast hidden" role="status" aria-live="polite">
     <span id="toast-text"></span>
     <button id="toast-action" class="btn btn-ghost small hidden"></button>
   </div>

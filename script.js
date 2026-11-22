@@ -510,3 +510,101 @@ render();
 if ('serviceWorker' in navigator && location.protocol !== 'file:') {
   navigator.serviceWorker.register('sw.js').catch(() => {});
 }
+
+/* ---------- Premier lancement : installer ou rester dans le navigateur ---------- */
+
+const CHOICE_KEY = 'pokerInstallChoice';
+const sheet = document.getElementById('install-sheet');
+const installBtn = document.getElementById('install-btn');
+const stepsEl = document.getElementById('install-steps');
+let deferredPrompt = null;
+
+const isStandalone = () =>
+  window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+const ua = navigator.userAgent;
+const isIOS = /iPhone|iPad|iPod/i.test(ua) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+const isMobile = isIOS || /Android|Mobile/i.test(ua);
+
+function installSteps() {
+  if (isIOS) {
+    const inSafari = /Safari/i.test(ua) && !/CriOS|FxiOS|EdgiOS/i.test(ua);
+    return (inSafari ? '' : '<p>Sur iPhone, ouvre d\'abord ce lien dans <b>Safari</b>.</p>') +
+      '<ol><li>Appuie sur <b>Partager</b> <span aria-hidden="true">⎋</span> en bas de l\'écran</li>' +
+      '<li>Choisis <b>« Sur l\'écran d\'accueil »</b></li><li>Appuie sur <b>Ajouter</b></li></ol>';
+  }
+  if (/Android/i.test(ua)) {
+    return '<ol><li>Ouvre le menu du navigateur <b>⋮</b></li>' +
+      '<li>Choisis <b>« Installer l\'application »</b> ou <b>« Ajouter à l\'écran d\'accueil »</b></li></ol>';
+  }
+  return '<p>Dans la barre d\'adresse, clique sur l\'icône <b>Installer</b> (⊕), ou passe par le menu du navigateur.</p>';
+}
+
+function openSheet() {
+  if (isStandalone()) {
+    installBtn.classList.add('hidden');
+  } else {
+    installBtn.classList.remove('hidden');
+  }
+  stepsEl.classList.add('hidden');
+  sheet.classList.remove('hidden');
+}
+
+function closeSheet(choice) {
+  sheet.classList.add('hidden');
+  if (choice) localStorage.setItem(CHOICE_KEY, choice);
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault(); // on affiche notre propre choix
+  deferredPrompt = e;
+});
+
+window.addEventListener('appinstalled', () => {
+  closeSheet('installed');
+  showToast('Appli installée sur ton écran d\'accueil 🎉');
+});
+
+installBtn.addEventListener('click', async () => {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const { outcome } = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (outcome === 'accepted') closeSheet('installed');
+    return;
+  }
+  stepsEl.innerHTML = installSteps();
+  stepsEl.classList.remove('hidden');
+});
+
+document.getElementById('browser-btn').addEventListener('click', () => closeSheet('browser'));
+
+document.getElementById('share-btn').addEventListener('click', async () => {
+  const url = location.origin + location.pathname;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: 'Présence Poker', text: 'Qui est à la table ce soir ?', url });
+      return;
+    } catch (err) {
+      if (err.name === 'AbortError') return;
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(url);
+    showToast('Lien copié : colle-le dans le navigateur ou l\'appli de ton choix');
+  } catch {
+    showToast(url);
+  }
+});
+
+sheet.addEventListener('click', e => {
+  if (e.target === sheet) closeSheet('browser');
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape' && !sheet.classList.contains('hidden')) closeSheet('browser');
+});
+document.getElementById('open-install').addEventListener('click', openSheet);
+
+// Proposé automatiquement au premier passage sur téléphone, sauf dans l'appli installée
+if (!isStandalone() && isMobile && !localStorage.getItem(CHOICE_KEY)) {
+  setTimeout(openSheet, 600);
+}
