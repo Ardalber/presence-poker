@@ -1,4 +1,5 @@
-const STORAGE_KEY = 'pokerPlayers';
+const LEGACY_KEY = 'pokerPlayers';     // ancienne liste propre à l'appareil
+const CACHE_KEY = 'pokerSharedCache';  // dernière liste reçue du serveur
 const MAX_PER_TABLE = 9;
 const STATES = ['unknown', 'present', 'absent'];
 const VALUE_OF = { present: 1, absent: -1, unknown: 0 };
@@ -8,31 +9,44 @@ const VALUE_OF = { present: 1, absent: -1, unknown: 0 };
 function clampPresence(value) {
   const num = Number(value);
   if (Number.isNaN(num)) return 0;
-  return Math.max(-1, Math.min(1, num));
+  return Math.max(-1, Math.min(1, Math.round(num)));
 }
 
-function normalizePlayer(raw) {
+function normalizePlayer(raw, id, index = 0) {
   // Compatible avec l'ancien format (booléen "present")
   const presence =
     typeof raw.presence === 'number'
       ? clampPresence(raw.presence)
       : typeof raw.present === 'boolean'
         ? (raw.present ? 1 : -1)
-        : -1;
-  return { name: String(raw.name ?? '').trim(), presence };
+        : 0;
+  const p = {
+    id: String(id),
+    name: String(raw.name ?? '').trim().slice(0, 30),
+    presence,
+    order: typeof raw.order === 'number' ? raw.order : index,
+  };
+  if (typeof raw.uid === 'string') p.uid = raw.uid;
+  return p;
 }
 
-function loadPlayers() {
+function fromServer(obj) {
+  return Object.entries(obj || {})
+    .filter(([, v]) => v && typeof v === 'object')
+    .map(([id, v], i) => normalizePlayer(v, id, i))
+    .filter(p => p.name)
+    .sort((a, b) => a.order - b.order);
+}
+
+function loadLegacy() {
   try {
-    const data = JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-    return Array.isArray(data) ? data.map(normalizePlayer).filter(p => p.name) : [];
+    const data = JSON.parse(localStorage.getItem(LEGACY_KEY) || '[]');
+    return Array.isArray(data) ? data.map((p, i) => normalizePlayer(p, newId(), i)).filter(p => p.name) : [];
   } catch {
     return [];
   }
 }
 
-// Dernière liste reçue du serveur, pour l'afficher tout de suite (et hors connexion)
-const CACHE_KEY = 'pokerSharedCache';
 function loadCache() {
   try {
     const data = JSON.parse(localStorage.getItem(CACHE_KEY) || 'null');
@@ -42,28 +56,55 @@ function loadCache() {
   }
 }
 
+function newId() {
+  return 'p' + Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
+}
+
 const cache = loadCache();
-const localPlayers = loadPlayers(); // ancienne liste propre à cet appareil (pour l'import admin)
-let players = cache ? cache.players.map(normalizePlayer) : [];
+const legacyPlayers = loadLegacy();
+let players = cache ? cache.players.map((p, i) => normalizePlayer(p, p.id || i, i)) : [];
+let serverState = {}; // id -> JSON tel que reçu du serveur (pour n'envoyer que les changements)
 let seatingData = cache ? cache.seating : null;
 let filter = 'all';
 
-let cloud = null;       // API Firebase une fois chargée
-let isAdmin = false;
+let cloud = null;
 let currentUser = null;
-let cloudLoaded = false; // la liste du serveur a été reçue au moins une fois
+let isAdmin = false;
+let isBanned = false;
+let cloudLoaded = false;
+let usersData = {};
+let bannedList = {};
 
 const canEdit = () => isAdmin && cloud !== null;
+const myId = () => (currentUser ? currentUser.uid : null);
+const myEntry = () => players.find(p => p.id === myId());
 
 function writeCache() {
   localStorage.setItem(CACHE_KEY, JSON.stringify({ players, seating: seatingData }));
 }
 
-// Enregistre la liste sur le serveur : tous les appareils la voient en direct
+function serialize(p, order) {
+  const data = { name: p.name, presence: p.presence, order };
+  if (p.uid) data.uid = p.uid;
+  return data;
+}
+
+// Admin : envoie au serveur uniquement les joueurs modifiés / supprimés
 function save() {
   if (!canEdit()) return;
+  const updates = {};
+  const kept = new Set();
+  players.forEach((p, i) => {
+    kept.add(p.id);
+    const data = serialize(p, i);
+    if (serverState[p.id] !== JSON.stringify(data)) updates[p.id] = data;
+  });
+  Object.keys(serverState).forEach(id => {
+    if (!kept.has(id)) updates[id] = null;
+  });
   writeCache();
-  cloud.setPlayers(players).catch(err => {
+  if (Object.keys(updates).length === 0) return;
+  cloud.updatePlayers(updates).catch(err => {
     console.error(err);
     showToast('Modification refusée par le serveur');
   });
@@ -75,9 +116,13 @@ function stateOf(value) {
   return 'unknown';
 }
 
-function nameExists(name, exceptIndex = -1) {
+function nameExists(name, exceptId = null) {
   const key = name.toLocaleLowerCase('fr');
-  return players.some((p, i) => i !== exceptIndex && p.name.toLocaleLowerCase('fr') === key);
+  return players.some(p => p.id !== exceptId && p.name.toLocaleLowerCase('fr') === key);
+}
+
+function cleanName(value) {
+  return value.trim().replace(/\s+/g, ' ').slice(0, 30);
 }
 
 function initials(name) {
@@ -94,7 +139,7 @@ function chipColor(name) {
   return CHIP_COLORS[h % CHIP_COLORS.length];
 }
 
-/* ---------- Rendu ---------- */
+/* ---------- Rendu de la liste ---------- */
 
 const listEl = document.getElementById('player-list');
 const emptyEl = document.getElementById('empty-state');
@@ -111,22 +156,23 @@ function render() {
   const visible = listEl.children.length;
   emptyEl.classList.toggle('hidden', visible > 0);
   emptyEl.textContent = players.length === 0
-    ? (!cloudLoaded ? 'Chargement de la liste…'
-      : canEdit() ? 'Aucun joueur pour l’instant. Ajoute le premier !'
-      : 'Aucun joueur pour l’instant.')
+    ? (!cloudLoaded ? 'Chargement de la liste…' : 'Aucun joueur pour l’instant.')
     : 'Aucun joueur dans cette catégorie.';
 
   updateSummary();
+  renderMe();
   checkSeatingStale();
 }
 
 function buildItem(p, i, state) {
+  const editable = canEdit();
   const li = document.createElement('li');
   li.className = 'player-item';
-  li.draggable = canEdit();
+  if (p.id === myId()) li.classList.add('is-me');
+  li.draggable = editable;
   li.dataset.index = i;
   li.dataset.playerState = state;
-  if (canEdit()) li.title = 'Clique pour changer le statut';
+  if (editable) li.title = 'Clique pour changer le statut';
 
   const avatar = document.createElement('span');
   avatar.className = 'avatar';
@@ -140,10 +186,22 @@ function buildItem(p, i, state) {
   const badge = document.createElement('span');
   badge.className = 'state-badge';
   badge.textContent = { present: 'Présent', absent: 'Absent', unknown: 'En attente' }[state];
+  if (p.uid) {
+    const self = document.createElement('span');
+    self.className = 'self-tag';
+    self.textContent = p.id === myId() ? 'toi' : 'inscrit';
+    self.title = p.id === myId() ? 'C’est toi' : 'S’est inscrit lui-même';
+    badge.append(' ', self);
+  }
 
   const info = document.createElement('div');
   info.className = 'player-info';
   info.append(name, badge);
+
+  if (!editable) {
+    li.append(avatar, info);
+    return li;
+  }
 
   const toggles = document.createElement('div');
   toggles.className = 'toggle-buttons';
@@ -164,23 +222,21 @@ function buildItem(p, i, state) {
     toggles.append(b);
   });
 
-  const renameBtn = iconButton('✏️', 'Renommer', () => startRename(li, i));
-  const deleteBtn = iconButton('🗑️', 'Supprimer', () => removePlayer(i));
-
   const tools = document.createElement('div');
   tools.className = 'player-tools';
-  tools.append(renameBtn, deleteBtn);
+  tools.append(
+    iconButton('✏️', 'Renommer', () => startRename(li, i)),
+    iconButton('🗑️', 'Supprimer', () => removePlayer(i)),
+  );
 
-  if (canEdit()) li.append(avatar, info, tools, toggles);
-  else li.append(avatar, info);
+  li.append(avatar, info, tools, toggles);
 
   li.addEventListener('click', e => {
     if (!canEdit() || e.target.closest('button, input')) return;
-    const next = STATES[(STATES.indexOf(state) + 1) % STATES.length];
-    setState(i, next);
+    setState(i, STATES[(STATES.indexOf(state) + 1) % STATES.length]);
   });
 
-  if (canEdit()) setupDrag(li);
+  setupDrag(li);
   return li;
 }
 
@@ -225,7 +281,7 @@ function bump(id, value) {
   el.classList.add('bump');
 }
 
-/* ---------- Actions ---------- */
+/* ---------- Actions admin ---------- */
 
 function setState(i, state) {
   if (!canEdit()) return;
@@ -236,7 +292,7 @@ function setState(i, state) {
 
 function addPlayer(name) {
   if (!canEdit()) return;
-  players.push({ name, presence: 0 });
+  players.push({ id: newId(), name, presence: 0, order: players.length });
   save();
   render();
 }
@@ -249,7 +305,7 @@ function removePlayer(i) {
   save();
   render();
   showToast(`${removed.name} supprimé`, 'Annuler', () => {
-    if (!lastRemoved) return;
+    if (!lastRemoved || !canEdit()) return;
     players.splice(Math.min(lastRemoved.index, players.length), 0, lastRemoved.player);
     lastRemoved = null;
     save();
@@ -272,9 +328,9 @@ function startRename(li, i) {
   const finish = commit => {
     if (done) return;
     done = true;
-    const value = input.value.trim();
+    const value = cleanName(input.value);
     if (commit && value && value !== players[i].name) {
-      if (nameExists(value, i)) {
+      if (nameExists(value, players[i].id)) {
         showToast(`« ${value} » existe déjà`);
       } else {
         players[i].name = value;
@@ -295,7 +351,7 @@ document.getElementById('player-form').addEventListener('submit', e => {
   e.preventDefault();
   const input = document.getElementById('player-name');
   const errorEl = document.getElementById('form-error');
-  const name = input.value.trim().replace(/\s+/g, ' ');
+  const name = cleanName(input.value);
   if (!name) return;
   if (nameExists(name)) {
     errorEl.textContent = `« ${name} » est déjà dans la liste.`;
@@ -355,7 +411,7 @@ document.getElementById('reset-btn').addEventListener('click', e => {
 });
 document.getElementById('confirm-yes').addEventListener('click', () => {
   if (!canEdit()) return;
-  players =players.map(p => ({ ...p, presence: 0 }));
+  players = players.map(p => ({ ...p, presence: 0 }));
   save();
   render();
   confirmBox.classList.add('hidden');
@@ -366,7 +422,7 @@ document.addEventListener('click', e => {
   if (!e.target.closest('.reset-wrapper')) confirmBox.classList.add('hidden');
 });
 
-/* ---------- Glisser-déposer (insère au lieu d'échanger) ---------- */
+/* ---------- Glisser-déposer (admin) ---------- */
 
 let dragIndex = null;
 
@@ -400,10 +456,195 @@ function setupDrag(li) {
   });
 }
 
+/* ---------- Ma présence (joueur connecté) ---------- */
+
+const meCard = document.getElementById('me-card');
+
+function renderMe() {
+  const views = {
+    guest: document.getElementById('me-guest'),
+    banned: document.getElementById('me-banned'),
+    join: document.getElementById('me-join'),
+    joined: document.getElementById('me-joined'),
+  };
+  let view = 'guest';
+  if (currentUser && isBanned) view = 'banned';
+  else if (currentUser && myEntry()) view = 'joined';
+  else if (currentUser) view = 'join';
+
+  // L'admin gère la liste directement : la carte ne lui sert que s'il est inscrit
+  meCard.classList.toggle('hidden', !cloud || (isAdmin && view !== 'joined'));
+  Object.entries(views).forEach(([k, el]) => el.classList.toggle('hidden', k !== view));
+
+  if (view === 'join') {
+    const input = document.getElementById('me-name');
+    if (!input.value && !input.dataset.touched && currentUser.displayName) {
+      input.value = currentUser.displayName.split(' ')[0].slice(0, 30);
+    }
+  }
+  if (view === 'joined') {
+    const me = myEntry();
+    document.getElementById('me-hello').textContent = `Salut ${me.name} ! Tu viens ce soir ?`;
+    const state = stateOf(me.presence);
+    document.querySelectorAll('#me-joined .me-choice').forEach(b => {
+      b.setAttribute('aria-pressed', String(b.dataset.state === state));
+    });
+  }
+}
+
+async function writeMe(changes) {
+  const me = myEntry();
+  const base = me
+    ? { name: me.name, presence: me.presence, order: me.order, uid: myId() }
+    : { presence: 0, order: Date.now(), uid: myId() };
+  try {
+    await cloud.setPlayer(myId(), { ...base, ...changes });
+    return true;
+  } catch (err) {
+    console.error(err);
+    showToast(isBanned ? 'Ton compte a été bloqué par l’admin' : 'Enregistrement refusé par le serveur');
+    return false;
+  }
+}
+
+document.getElementById('me-name').addEventListener('input', e => {
+  e.target.dataset.touched = '1';
+  document.getElementById('me-error').textContent = '';
+});
+
+document.getElementById('me-join').addEventListener('submit', async e => {
+  e.preventDefault();
+  const name = cleanName(document.getElementById('me-name').value);
+  const errorEl = document.getElementById('me-error');
+  if (!name) return;
+  if (nameExists(name, myId())) {
+    errorEl.textContent = `« ${name} » est déjà dans la liste. Ajoute une initiale, ou demande à l’admin.`;
+    return;
+  }
+  if (await writeMe({ name, presence: 0 })) showToast('Tu es inscrit, indique si tu viens !');
+});
+
+document.querySelectorAll('#me-joined .me-choice').forEach(b => {
+  b.addEventListener('click', () => writeMe({ presence: VALUE_OF[b.dataset.state] }));
+});
+
+document.getElementById('me-rename').addEventListener('click', async () => {
+  const me = myEntry();
+  if (!me) return;
+  const value = prompt('Ton nom dans la liste :', me.name);
+  if (value === null) return;
+  const name = cleanName(value);
+  if (!name || name === me.name) return;
+  if (nameExists(name, myId())) {
+    showToast(`« ${name} » est déjà dans la liste`);
+    return;
+  }
+  writeMe({ name });
+});
+
+document.getElementById('me-leave').addEventListener('click', async () => {
+  if (!myEntry() || !confirm('Te retirer de la liste des joueurs ?')) return;
+  try {
+    await cloud.setPlayer(myId(), null);
+    showToast('Tu as été retiré de la liste');
+  } catch {
+    showToast('Impossible de te retirer');
+  }
+});
+
+document.querySelectorAll('.signin-btn').forEach(b => b.addEventListener('click', signIn));
+
+/* ---------- Panneau admin : comptes connectés ---------- */
+
+function timeAgo(ts) {
+  const s = Math.max(0, (Date.now() - ts) / 1000);
+  if (s < 60) return 'à l’instant';
+  if (s < 3600) return `il y a ${Math.floor(s / 60)} min`;
+  if (s < 86400) return `il y a ${Math.floor(s / 3600)} h`;
+  const d = Math.floor(s / 86400);
+  return d === 1 ? 'hier' : `il y a ${d} jours`;
+}
+
+function renderAdminPanel() {
+  const panel = document.getElementById('admin-panel');
+  panel.classList.toggle('hidden', !canEdit());
+  if (!canEdit()) return;
+
+  const list = document.getElementById('users-list');
+  list.innerHTML = '';
+  const users = Object.entries(usersData)
+    .map(([uid, u]) => ({ uid, ...u }))
+    .sort((a, b) => (b.lastSeen || 0) - (a.lastSeen || 0));
+  document.getElementById('users-count').textContent = users.length;
+
+  users.forEach(u => {
+    const banned = bannedList[u.uid] === true;
+    const entry = players.find(p => p.id === u.uid);
+    const li = document.createElement('li');
+    li.className = 'user-item' + (banned ? ' is-banned' : '');
+
+    const photo = document.createElement(u.photo ? 'img' : 'span');
+    photo.className = 'user-photo';
+    if (u.photo) {
+      photo.src = u.photo;
+      photo.alt = '';
+      photo.referrerPolicy = 'no-referrer';
+    } else {
+      photo.textContent = initials(u.name || '?');
+    }
+
+    const info = document.createElement('div');
+    info.className = 'user-info';
+    const name = document.createElement('span');
+    name.className = 'user-name';
+    name.textContent = u.name || 'Sans nom';
+    const meta = document.createElement('span');
+    meta.className = 'user-meta';
+    meta.textContent = [
+      u.lastSeen ? `vu ${timeAgo(u.lastSeen)}` : '',
+      banned ? 'banni' : entry ? `inscrit : ${entry.name}` : 'pas inscrit',
+    ].filter(Boolean).join(' · ');
+    info.append(name, meta);
+
+    li.append(photo, info);
+
+    if (u.uid !== myId()) {
+      const btn = document.createElement('button');
+      btn.className = banned ? 'btn btn-ghost small' : 'btn btn-danger-ghost small';
+      btn.textContent = banned ? 'Débannir' : 'Bannir';
+      btn.addEventListener('click', async () => {
+        if (!banned && !confirm(`Bannir ${u.name} ? Il sera retiré de la liste et ne pourra plus s’inscrire.`)) return;
+        try {
+          await (banned ? cloud.unban(u.uid) : cloud.ban(u.uid));
+          showToast(banned ? `${u.name} peut de nouveau s’inscrire` : `${u.name} est banni`);
+        } catch (err) {
+          console.error(err);
+          showToast('Action refusée par le serveur');
+        }
+      });
+      li.append(btn);
+    } else {
+      const you = document.createElement('span');
+      you.className = 'self-tag';
+      you.textContent = 'toi';
+      li.append(you);
+    }
+    list.append(li);
+  });
+
+  if (users.length === 0) {
+    const li = document.createElement('li');
+    li.className = 'user-meta';
+    li.textContent = 'Personne ne s’est encore connecté.';
+    list.append(li);
+  }
+}
+
 /* ---------- Plan de table ---------- */
 
 const seatingEl = document.getElementById('seating');
 let lastSeatedKey = null;
+let seatingClosedAt = null; // plan masqué par l'utilisateur sur cet appareil
 
 function tableSizes(n) {
   const tables = Math.ceil(n / MAX_PER_TABLE);
@@ -450,11 +691,9 @@ function drawSeating() {
   cloud.setSeating(data).catch(() => showToast('Plan de table non partagé'));
 }
 
-let seatingClosedAt = null; // plan masqué par l'utilisateur sur cet appareil
-
 function showSeating(data, scroll = false) {
   seatingData = data;
-  const tablesData = data && Array.isArray(data.tables) ? data.tables.map(t => Object.values(t || {})) : [];
+  const tablesData = data && data.tables ? Object.values(data.tables).map(t => Object.values(t || {})) : [];
   if (tablesData.length === 0 || seatingClosedAt === data.at) {
     seatingEl.classList.add('hidden');
     lastSeatedKey = null;
@@ -554,34 +793,23 @@ function showToast(text, actionLabel, onAction) {
   toastTimer = setTimeout(() => {
     toast.classList.add('hidden');
     if (actionLabel) lastRemoved = null;
-  }, actionLabel ? 5000 : 2500);
+  }, actionLabel ? 5000 : 3500);
 }
 
-/* ---------- Liste partagée en direct (Firebase) ---------- */
+/* ---------- Connexion / mode ---------- */
 
-const adminBtn = document.getElementById('admin-btn');
+const accountBtn = document.getElementById('admin-btn');
 const statusEl = document.getElementById('live-status');
-const uidBox = document.getElementById('uid-box');
 
 function applyMode() {
   document.body.classList.toggle('is-admin', canEdit());
   document.body.classList.toggle('readonly', !canEdit());
-  if (!cloud) {
-    adminBtn.textContent = '🔒 Admin';
-    adminBtn.disabled = true;
-  } else if (canEdit()) {
-    adminBtn.textContent = '👑 Admin · Déconnexion';
-    adminBtn.disabled = false;
-  } else if (currentUser) {
-    adminBtn.textContent = 'Déconnexion';
-    adminBtn.disabled = false;
-  } else {
-    adminBtn.textContent = '🔒 Admin';
-    adminBtn.disabled = false;
-  }
-  uidBox.classList.toggle('hidden', !(currentUser && !isAdmin));
-  if (currentUser && !isAdmin) document.getElementById('uid-value').textContent = currentUser.uid;
+  accountBtn.disabled = !cloud;
+  accountBtn.textContent = !currentUser
+    ? '👤 Se connecter'
+    : canEdit() ? '👑 Admin · Déconnexion' : 'Déconnexion';
   render();
+  renderAdminPanel();
   showSeating(seatingData);
 }
 
@@ -590,11 +818,10 @@ function setStatus(online) {
   statusEl.textContent = online ? 'En direct' : 'Hors ligne';
 }
 
-adminBtn.addEventListener('click', async () => {
+async function signIn() {
   if (!cloud) return;
   try {
-    if (currentUser) await cloud.signOut();
-    else await cloud.signIn();
+    await cloud.signIn();
   } catch (err) {
     console.error(err);
     const messages = {
@@ -603,23 +830,24 @@ adminBtn.addEventListener('click', async () => {
     };
     showToast(messages[err.code] || 'Connexion impossible : ' + (err.code || err.message));
   }
-});
+}
 
-document.getElementById('uid-copy').addEventListener('click', async () => {
-  try {
-    await navigator.clipboard.writeText(currentUser.uid);
-    showToast('Identifiant copié');
-  } catch {
-    showToast(currentUser.uid);
+accountBtn.addEventListener('click', async () => {
+  if (!cloud) return;
+  if (currentUser) {
+    await cloud.signOut();
+    showToast('Déconnecté');
+  } else {
+    signIn();
   }
 });
 
 let importOffered = false;
 function offerImport() {
   // Première connexion admin : si le serveur est vide, on reprend la liste de cet appareil
-  if (importOffered || !canEdit() || !cloudLoaded || players.length > 0 || localPlayers.length === 0) return;
+  if (importOffered || !canEdit() || !cloudLoaded || players.length > 0 || legacyPlayers.length === 0) return;
   importOffered = true;
-  players = localPlayers.map(p => ({ ...p }));
+  players = legacyPlayers.map(p => ({ ...p }));
   save();
   render();
   showToast(`${players.length} joueurs repris de cet appareil et partagés`);
@@ -629,11 +857,14 @@ async function startCloud() {
   try {
     const { initCloud } = await import('./cloud.js');
     cloud = await initCloud({
-      onPlayers(list) {
-        players = list.map(normalizePlayer).filter(p => p.name);
+      onPlayers(obj) {
+        players = fromServer(obj);
+        serverState = {};
+        players.forEach(p => { serverState[p.id] = JSON.stringify(serialize(p, p.order)); });
         cloudLoaded = true;
         writeCache();
         render();
+        renderAdminPanel();
         offerImport();
       },
       onSeating(data) {
@@ -651,10 +882,22 @@ async function startCloud() {
         const wasAdmin = isAdmin;
         currentUser = user;
         isAdmin = admin;
+        if (!admin) { usersData = {}; bannedList = {}; }
         applyMode();
         if (admin && !wasAdmin) showToast('Mode admin : tes modifications sont visibles en direct');
-        if (user && !admin) showToast('Ce compte n’est pas administrateur');
         offerImport();
+      },
+      onBanned(banned) {
+        isBanned = banned;
+        renderMe();
+      },
+      onUsers(obj) {
+        usersData = obj;
+        renderAdminPanel();
+      },
+      onBannedList(obj) {
+        bannedList = obj;
+        renderAdminPanel();
       },
     });
     applyMode();
@@ -665,15 +908,6 @@ async function startCloud() {
     applyMode();
     showToast('Hors ligne : affichage de la dernière liste connue');
   }
-}
-
-setStatus(false);
-applyMode();
-startCloud();
-
-/* Appli installable : fonctionne aussi hors connexion */
-if ('serviceWorker' in navigator && location.protocol !== 'file:') {
-  navigator.serviceWorker.register('sw.js').catch(() => {});
 }
 
 /* ---------- Premier lancement : installer ou rester dans le navigateur ---------- */
@@ -705,11 +939,7 @@ function installSteps() {
 }
 
 function openSheet() {
-  if (isStandalone()) {
-    installBtn.classList.add('hidden');
-  } else {
-    installBtn.classList.remove('hidden');
-  }
+  installBtn.classList.toggle('hidden', isStandalone());
   stepsEl.classList.add('hidden');
   sheet.classList.remove('hidden');
 }
@@ -769,7 +999,18 @@ document.addEventListener('keydown', e => {
 });
 document.getElementById('open-install').addEventListener('click', openSheet);
 
+/* ---------- Démarrage ---------- */
+
+setStatus(false);
+applyMode();
+startCloud();
+
 // Proposé automatiquement au premier passage sur téléphone, sauf dans l'appli installée
 if (!isStandalone() && isMobile && !localStorage.getItem(CHOICE_KEY)) {
   setTimeout(openSheet, 600);
+}
+
+/* Appli installable : fonctionne aussi hors connexion */
+if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+  navigator.serviceWorker.register('sw.js').catch(() => {});
 }

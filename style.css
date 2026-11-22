@@ -636,25 +636,111 @@ body.readonly .player-item:hover { transform: none; box-shadow: none; }
 #admin-btn:disabled { opacity: 0.5; cursor: default; }
 body.is-admin #admin-btn { border-color: var(--gold); color: var(--gold); }
 
-.uid-box {
-  margin-bottom: 1rem;
-  padding: 0.75rem 1rem;
-  background: rgba(233, 196, 106, 0.08);
-  border: 1px solid rgba(233, 196, 106, 0.35);
-  border-radius: 12px;
-  font-size: 0.85rem;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  align-items: center;
+/* ---------- Ma présence (joueur connecté) ---------- */
+
+.me-card {
+  max-width: 520px;
+  margin: 0 auto 1.25rem;
+  padding: 1rem 1.25rem;
+  text-align: center;
+  background: linear-gradient(135deg, rgba(233, 196, 106, 0.12), rgba(233, 196, 106, 0.03));
+  border: 1px solid rgba(233, 196, 106, 0.4);
+  border-radius: 16px;
+  animation: pop 0.2s ease;
 }
-.uid-box p { flex-basis: 100%; color: var(--muted); }
-.uid-box code {
+.me-title { font-weight: 700; color: var(--gold); font-size: 1.05rem; margin-bottom: 0.25rem; }
+.me-text { color: var(--muted); font-size: 0.88rem; margin-bottom: 0.75rem; }
+.me-join-row { display: flex; gap: 0.5rem; margin-top: 0.5rem; }
+.me-join-row input {
   flex: 1;
   min-width: 0;
-  overflow-wrap: anywhere;
-  padding: 0.35rem 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--tile-border);
+  border-radius: 10px;
   background: #0d1512;
-  border-radius: 6px;
-  color: var(--gold);
+  color: var(--text);
+  font-size: 1rem;
+  outline: none;
 }
+.me-join-row input:focus { border-color: var(--gold); box-shadow: 0 0 0 3px rgba(233, 196, 106, 0.2); }
+
+.me-choices {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+.me-choice {
+  --c: var(--unknown);
+  padding: 0.75rem 0.4rem;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--c) 50%, transparent);
+  background: transparent;
+  color: var(--c);
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.9rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, transform 0.1s;
+}
+.me-choice:hover { background: color-mix(in srgb, var(--c) 15%, transparent); }
+.me-choice:active { transform: scale(0.96); }
+.me-yes { --c: var(--present); }
+.me-no { --c: var(--absent); }
+.me-maybe { --c: #adb5bd; }
+.me-choice[aria-pressed='true'] { background: var(--c); color: #0d1512; border-color: var(--c); }
+.me-links { margin-top: 0.75rem; font-size: 0.82rem; color: var(--muted); }
+
+.self-tag {
+  display: inline-block;
+  padding: 0 0.4rem;
+  border-radius: 999px;
+  background: rgba(233, 196, 106, 0.18);
+  color: var(--gold);
+  font-size: 0.65rem;
+  letter-spacing: 0.03em;
+  text-transform: lowercase;
+}
+.player-item.is-me { box-shadow: 0 0 0 1px var(--gold); }
+
+/* ---------- Panneau admin ---------- */
+
+.admin-panel {
+  margin-top: 2rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid rgba(233, 196, 106, 0.2);
+}
+.admin-panel h2 { color: var(--gold); font-size: 1.2rem; margin-bottom: 0.35rem; display: flex; align-items: center; gap: 0.5rem; }
+.count-pill {
+  font-size: 0.75rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  background: var(--gold);
+  color: #2b1d05;
+}
+.users-list { list-style: none; display: grid; gap: 0.5rem; }
+.user-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  background: var(--tile);
+  border: 1px solid var(--tile-border);
+  border-radius: 12px;
+}
+.user-item.is-banned { opacity: 0.6; border-color: rgba(250, 82, 82, 0.5); }
+.user-photo {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: grid;
+  place-items: center;
+  background: #2b3a32;
+  font-weight: 700;
+  font-size: 0.8rem;
+  flex-shrink: 0;
+}
+.user-info { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.user-name { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.user-meta { color: var(--muted); font-size: 0.78rem; }

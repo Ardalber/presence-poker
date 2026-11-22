@@ -18,12 +18,7 @@
   <main class="container">
     <div class="topbar">
       <span id="live-status" class="live-status" data-online="false">Hors ligne</span>
-      <button id="admin-btn" class="btn btn-ghost small" disabled>🔒 Admin</button>
-    </div>
-    <div id="uid-box" class="uid-box hidden">
-      <p>Ce compte n'est pas encore administrateur. Pour le devenir, ajoute cet identifiant dans Firebase&nbsp;:</p>
-      <code id="uid-value"></code>
-      <button id="uid-copy" class="btn btn-ghost small">Copier</button>
+      <button id="admin-btn" class="btn btn-ghost small" disabled>👤 Se connecter</button>
     </div>
 
     <header class="app-header">
@@ -47,6 +42,39 @@
       </div>
     </section>
     <p id="tables-hint" class="tables-hint"></p>
+
+    <section id="me-card" class="me-card hidden" aria-label="Ma présence">
+      <div id="me-guest">
+        <p class="me-title">Tu joues&nbsp;?</p>
+        <p class="me-text">Connecte-toi pour t'ajouter à la liste et dire si tu viens.</p>
+        <button class="btn btn-main signin-btn">👤 Se connecter avec Google</button>
+      </div>
+      <div id="me-banned" class="hidden">
+        <p class="me-title">Compte bloqué</p>
+        <p class="me-text">L'admin a bloqué ton compte : tu peux voir la liste, mais plus t'y inscrire.</p>
+      </div>
+      <form id="me-join" class="hidden" autocomplete="off">
+        <p class="me-title">Ajoute-toi à la liste</p>
+        <div class="me-join-row">
+          <input type="text" id="me-name" placeholder="Ton nom" maxlength="30" required>
+          <button type="submit" class="btn btn-main">M'inscrire</button>
+        </div>
+        <p id="me-error" class="form-error" aria-live="polite"></p>
+      </form>
+      <div id="me-joined" class="hidden">
+        <p id="me-hello" class="me-title"></p>
+        <div class="me-choices">
+          <button class="me-choice me-yes" data-state="present">✓ Je viens</button>
+          <button class="me-choice me-maybe" data-state="unknown">? Je ne sais pas</button>
+          <button class="me-choice me-no" data-state="absent">✕ Je ne viens pas</button>
+        </div>
+        <p class="me-links">
+          <button id="me-rename" class="link-btn">Changer mon nom</button>
+          ·
+          <button id="me-leave" class="link-btn">Me retirer de la liste</button>
+        </p>
+      </div>
+    </section>
 
     <form id="player-form" class="admin-only" autocomplete="off">
       <input type="text" id="player-name" placeholder="Nom du joueur" maxlength="30" required>
@@ -81,6 +109,12 @@
 
     <p class="help admin-only">Astuce&nbsp;: clique sur un joueur pour changer son statut, ✏️ pour le renommer, glisse-le pour le déplacer.</p>
     <p class="help"><button id="open-install" class="link-btn">📲 Installer l'appli / partager le lien</button></p>
+
+    <section id="admin-panel" class="admin-panel hidden" aria-label="Comptes connectés">
+      <h2>Comptes connectés <span id="users-count" class="count-pill">0</span></h2>
+      <p class="me-text">Toutes les personnes qui se sont connectées à l'appli. Un compte banni est retiré de la liste et ne peut plus s'inscrire.</p>
+      <ul id="users-list" class="users-list"></ul>
+    </section>
 
     <section id="seating" class="seating hidden" aria-label="Plan de table">
       <div class="seating-header">

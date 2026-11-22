@@ -1,4 +1,4 @@
-// Connexion à Firebase : liste partagée en direct + connexion admin Google.
+// Connexion à Firebase : liste partagée en direct, comptes Google, admin et bannissements.
 // Ces informations identifient le projet Firebase, elles ne sont pas secrètes :
 // la sécurité est assurée par les règles de la base (voir database.rules.json).
 const firebaseConfig = {
@@ -14,7 +14,10 @@ const firebaseConfig = {
 const SDK = 'https://www.gstatic.com/firebasejs/10.12.2';
 
 /**
- * handlers : { onPlayers(list), onSeating(data|null), onAuth({ user, isAdmin }), onConnection(bool) }
+ * handlers : {
+ *   onPlayers(obj), onSeating(data|null), onConnection(bool), onError(err),
+ *   onAuth({ user, isAdmin }), onBanned(bool), onUsers(obj), onBannedList(obj)
+ * }
  */
 export async function initCloud(handlers) {
   const [{ initializeApp }, db$, auth$] = await Promise.all([
@@ -22,7 +25,7 @@ export async function initCloud(handlers) {
     import(`${SDK}/firebase-database.js`),
     import(`${SDK}/firebase-auth.js`),
   ]);
-  const { getDatabase, ref, onValue, set, get } = db$;
+  const { getDatabase, ref, onValue, set, get, update } = db$;
   const {
     getAuth, GoogleAuthProvider, signInWithPopup, signInWithRedirect,
     getRedirectResult, signOut, onAuthStateChanged,
@@ -34,19 +37,41 @@ export async function initCloud(handlers) {
   const provider = new GoogleAuthProvider();
   provider.setCustomParameters({ prompt: 'select_account' });
 
-  const toList = v => (Array.isArray(v) ? v : v ? Object.values(v) : []).filter(Boolean);
-
-  onValue(ref(db, 'players'), snap => handlers.onPlayers(toList(snap.val())), err => handlers.onError(err));
+  onValue(ref(db, 'players'), snap => handlers.onPlayers(snap.val() || {}), err => handlers.onError(err));
   onValue(ref(db, 'seating'), snap => handlers.onSeating(snap.val()), () => {});
   onValue(ref(db, '.info/connected'), snap => handlers.onConnection(snap.val() === true));
 
+  let unsubs = [];
+  const stopUserListeners = () => {
+    unsubs.forEach(u => u());
+    unsubs = [];
+  };
+
   onAuthStateChanged(auth, async user => {
-    if (!user) return handlers.onAuth({ user: null, isAdmin: false });
+    stopUserListeners();
+    if (!user) {
+      handlers.onBanned(false);
+      return handlers.onAuth({ user: null, isAdmin: false });
+    }
+
+    // Fiche du joueur (nom + photo Google), visible par l'admin
+    set(ref(db, `users/${user.uid}`), {
+      name: (user.displayName || 'Sans nom').slice(0, 60),
+      photo: (user.photoURL || '').slice(0, 1000),
+      lastSeen: Date.now(),
+    }).catch(() => {});
+
+    unsubs.push(onValue(ref(db, `banned/${user.uid}`), s => handlers.onBanned(s.val() === true), () => {}));
+
     let isAdmin = false;
     try {
       isAdmin = (await get(ref(db, `admins/${user.uid}`))).val() === true;
     } catch {
       isAdmin = false;
+    }
+    if (isAdmin) {
+      unsubs.push(onValue(ref(db, 'users'), s => handlers.onUsers(s.val() || {}), () => {}));
+      unsubs.push(onValue(ref(db, 'banned'), s => handlers.onBannedList(s.val() || {}), () => {}));
     }
     handlers.onAuth({ user, isAdmin });
   });
@@ -66,7 +91,11 @@ export async function initCloud(handlers) {
       }
     },
     signOut: () => signOut(auth),
-    setPlayers: list => set(ref(db, 'players'), list),
+    // updates : { idJoueur: {...} | null }
+    updatePlayers: updates => update(ref(db, 'players'), updates),
+    setPlayer: (id, data) => set(ref(db, `players/${id}`), data),
+    ban: uid => update(ref(db), { [`banned/${uid}`]: true, [`players/${uid}`]: null }),
+    unban: uid => set(ref(db, `banned/${uid}`), null),
     setSeating: data => set(ref(db, 'seating'), data),
   };
 }
